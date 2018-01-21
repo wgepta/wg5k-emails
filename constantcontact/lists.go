@@ -2,7 +2,7 @@ package constantcontact
 
 import (
 	"context"
-	"net/http"
+	"fmt"
 	"time"
 )
 
@@ -23,7 +23,7 @@ type List struct {
 }
 
 //GetAll returns all contact lists
-func (s *ListService) GetAll(ctx context.Context) ([]*List, *http.Response, error) {
+func (s *ListService) GetAll(ctx context.Context) ([]*List, *Response, error) {
 	u := "lists"
 
 	req, err := s.client.NewRequest("GET", u, nil)
@@ -39,4 +39,34 @@ func (s *ListService) GetAll(ctx context.Context) ([]*List, *http.Response, erro
 	}
 
 	return lists, resp, nil
+}
+
+// Create a contact list.
+//
+// http://developer.constantcontact.com/docs/contact-list-api/contactlist-collection.html?method=POST
+func (s *ListService) Create(ctx context.Context, list *List) (*List, *Response, error) {
+	u := "lists"
+	req, err := s.client.NewRequest("POST", u, list)
+	if err != nil {
+		return nil, nil, err
+	}
+	l := new(List)
+	resp, err := s.client.Do(ctx, req, l)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return l, resp, nil
+}
+
+// Delete a list.
+//
+// http://developer.constantcontact.com/docs/contact-list-api/contactlist-resource.html?method=DELETE
+func (s *ListService) Delete(ctx context.Context, id string) (*Response, error) {
+	u := fmt.Sprintf("lists/%v", id)
+	req, err := s.client.NewRequest("DELETE", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	return s.client.Do(ctx, req, nil)
 }

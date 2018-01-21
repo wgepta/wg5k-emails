@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -35,7 +34,24 @@ type Client struct {
 
 	common service // Reuse a single struct instead of allocating one for each service on the heap.
 
-	Lists *ListService
+	Lists    *ListService
+	Contacts *ContactService
+}
+
+type metaResponse struct {
+	Meta struct {
+		Pagination struct {
+			NextLink string `json:"next_link,omitempty"`
+		} `json:"pagination,omitempty"`
+	} `json:"meta,omitempty"`
+}
+
+//Response is an http response with functionality added for the CC API
+//Namely, pagination
+type Response struct {
+	*http.Response
+
+	Next string
 }
 
 type service struct {
@@ -61,6 +77,7 @@ func NewClient(httpClient *http.Client, apiKey string, accessToken string) *Clie
 	}
 	c.common.client = c
 	c.Lists = (*ListService)(&c.common)
+	c.Contacts = (*ContactService)(&c.common)
 	return c
 }
 
@@ -76,7 +93,7 @@ func (c *Client) NewRequest(method, urlStr string, body interface{}) (*http.Requ
 	u, err := c.BaseURL.Parse(urlStr)
 
 	// Add api key to params
-	v := url.Values{}
+	v := u.Query()
 	v.Set("api_key", c.apiKey)
 	u.RawQuery = v.Encode()
 
@@ -96,6 +113,7 @@ func (c *Client) NewRequest(method, urlStr string, body interface{}) (*http.Requ
 	}
 
 	req, err := http.NewRequest(method, u.String(), buf)
+
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +137,7 @@ func (c *Client) NewRequest(method, urlStr string, body interface{}) (*http.Requ
 //
 // The provided ctx must be non-nil. If it is canceled or times out,
 // ctx.Err() will be returned.
-func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}) (*http.Response, error) {
+func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}) (*Response, error) {
 	req = req.WithContext(ctx)
 
 	resp, err := c.client.Do(req)
@@ -135,22 +153,48 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}) (*htt
 		return nil, err
 	}
 
-	defer func() {
-		// Drain up to 512 bytes and close the body to let the Transport reuse the connection
-		io.CopyN(ioutil.Discard, resp.Body, 512)
-		resp.Body.Close()
-	}()
-
-	if v != nil {
-		if w, ok := v.(io.Writer); ok {
-			io.Copy(w, resp.Body)
-		} else {
-			err = json.NewDecoder(resp.Body).Decode(v)
-			if err == io.EOF {
-				err = nil // ignore EOF errors caused by empty response body
-			}
-		}
+	// Store the body for reuse
+	defer resp.Body.Close()
+	var b bytes.Buffer
+	_, err = io.Copy(&b, resp.Body)
+	if err != nil {
+		return nil, err
 	}
 
-	return resp, err
+	// Create the CC response type
+	response, err := newResponse(resp, &b)
+	if err != nil {
+		return nil, err
+	}
+
+	// fmt.Printf("%v\n", b.String())
+
+	// Use the same response body to create the actual data
+	// for this response
+	mainReader := bytes.NewReader(b.Bytes())
+	err = json.NewDecoder(mainReader).Decode(&v)
+	if err == io.EOF {
+		err = nil // ignore EOF errors caused by empty response body
+	}
+
+	return response, err
+}
+
+func newResponse(r *http.Response, body *bytes.Buffer) (*Response, error) {
+	response := &Response{Response: r}
+
+	headerReader := bytes.NewReader(body.Bytes())
+	var meta *metaResponse
+	err := json.NewDecoder(headerReader).Decode(&meta)
+	if err != nil {
+		// If we can't decode the meta data, this won't have pagination
+		// information.  Just return the response without the pagination
+		// stuff
+		response.Next = ""
+		return response, nil
+	}
+
+	response.Next = meta.Meta.Pagination.NextLink
+
+	return response, err
 }

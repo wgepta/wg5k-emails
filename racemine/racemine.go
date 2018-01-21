@@ -10,12 +10,14 @@ import (
 )
 
 const (
-	loginURL  = "https://directors.racemine.com/Account/Login"
-	exportURL = "https://directors.racemine.com/events/reports/18391#tab-entrant-export"
+	baseURL   = "https://directors.racemine.com"
+	loginURL  = baseURL + "/Account/Login"
+	exportURL = baseURL + "/events/reports/18391#tab-entrant-export"
 )
 
 //Client is the mechanize client for Racemine
 type Client struct {
+	BaseURL   string
 	LoginURL  string
 	ExportURL string
 	Options   []cdp.Option
@@ -27,6 +29,7 @@ type Client struct {
 //NewClient returns a new Racemine client
 func NewClient(username, password string) *Client {
 	c := &Client{
+		BaseURL:   baseURL,
 		LoginURL:  loginURL,
 		ExportURL: exportURL,
 		username:  username,
