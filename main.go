@@ -81,6 +81,9 @@ func main() {
 	if cmd[1] == "contacts" {
 		err = syncToLocal()
 	}
+	if cmd[1] == "output" {
+		err = contactCommand()
+	}
 
 	if err != nil {
 		log.Println(err)
@@ -212,8 +215,9 @@ func contactCommand() error {
 	if err != nil {
 		return errors.Wrap(err, "could not read contacts")
 	}
+	fmt.Printf("EMAIL\tFNAME\tLNAME\n")
 	for _, contact := range *contacts {
-		fmt.Printf("[%s] %s %s: %s\n", contact.ID, contact.FirstName, contact.LastName, contact.EmailAddresses[0].EmailAddress)
+		fmt.Printf("%s\t%s\t%s\n", contact.EmailAddresses[0].EmailAddress, contact.FirstName, contact.LastName)
 	}
 
 	return nil
